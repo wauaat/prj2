@@ -41,6 +41,8 @@
 #include "stm32f4xx_hal.h"
 
 /* USER CODE BEGIN Includes */
+/*! \brief Wymagane do konwersji int na ASCII (itoa()) */
+#include <stdlib.h>
 /*! \brief Biblioteka potrzebna do operacji tekstowych */
 #include <string.h>
 /* USER CODE END Includes */
@@ -165,8 +167,10 @@ int main(void)
   HAL_TIM_PWM_Start_DMA(&htim2, TIM_CHANNEL_3, &u32Tim2DutyCycle, 1u);
   /* Wlacz odczyt parametrow PWM */
   HAL_TIM_IC_Start(&htim3, TIM_CHANNEL_1);
+  HAL_TIM_IC_Start(&htim3, TIM_CHANNEL_2);
   /* Wlacz odczyt parametrow PWM */
   HAL_TIM_IC_Start(&htim4, TIM_CHANNEL_1);
+  HAL_TIM_IC_Start(&htim4, TIM_CHANNEL_2);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -380,9 +384,9 @@ static void MX_TIM3_Init(void)
   TIM_MasterConfigTypeDef sMasterConfig;
 
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 0;
+  htim3.Init.Prescaler = 42000-1;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 0;
+  htim3.Init.Period = 65535;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
   {
@@ -445,9 +449,9 @@ static void MX_TIM4_Init(void)
   TIM_MasterConfigTypeDef sMasterConfig;
 
   htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 0;
+  htim4.Init.Prescaler = 42000-1;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 0;
+  htim4.Init.Period = 65535;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
   {
@@ -655,7 +659,31 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 static void PrintInputPwmParameters(void)
 {
-   HAL_UART_Transmit(&huart2, "Jestem w print\n", 15u, 1000u);
+   uint8_t u8DutyCycle;
+   uint8_t u8Period;
+   uint8_t u8TxtBuffer[6u];
+   //PB10 PB6
+   /* Zablokuj odbior sygnalow przez uart */
+   HAL_UART_AbortReceive_IT(&huart2);
+
+   HAL_UART_Transmit(&huart2, (uint8_t*)"PWM on PB10:\n", 13u, 1000u);
+
+   HAL_UART_Transmit(&huart2, (uint8_t*)"  Period [ms]: ", 15u, 1000u);
+   u8Period = HAL_TIM_ReadCapturedValue(&htim3, TIM_CHANNEL_1) + 1u;
+   itoa(u8Period, (char *)u8TxtBuffer, 10);
+   HAL_UART_Transmit(&huart2, u8TxtBuffer, strlen((const char*)u8TxtBuffer), 1000u);
+   HAL_UART_Transmit(&huart2, (uint8_t*)"\n", 1u, 1000u);
+
+   HAL_UART_Transmit(&huart2, (uint8_t*)"  Duty Cycle [ms]: ", 19u, 1000u);
+   u8DutyCycle = HAL_TIM_ReadCapturedValue(&htim3, TIM_CHANNEL_2) + 1u;
+   itoa(u8DutyCycle, (char *)u8TxtBuffer, 10);
+   HAL_UART_Transmit(&huart2, u8TxtBuffer, strlen((const char*)u8TxtBuffer), 1000u);
+   HAL_UART_Transmit(&huart2, (uint8_t*)"\n", 1u, 1000u);
+
+   /* Wznow odbior sygnalow przez uart */
+   HAL_UART_Receive_IT(&huart2, &u8RxChar, 1u);
+//   HAL_UART_Transmit(&huart2, "  Period [ms]: ", 15u, 1000u);
+   //HAL_TIM_ReadCapturedValue()
 }
 
 static void UpdateDutyCycle(void)
