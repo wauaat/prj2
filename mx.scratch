@@ -2,7 +2,7 @@
 <Project>
 <ProjectName>/home/kas/dev/projects/stm32/sw4stm32/prj2/\prj2</ProjectName>
 <CMSIS>../Drivers/CMSIS</CMSIS>
-<HAL_Driver>/home/kas/dev/tools/STM32CubeMX/repository/STM32Cube_FW_F4_V1.17.0/Drivers/CMSIS</HAL_Driver>
+<HAL_Driver>/home/kas/dev/tools/STM32CubeMX/repository/STM32Cube_FW_F4_V1.18.0/Drivers/CMSIS</HAL_Driver>
 
 <Toolchain>SW4STM32</Toolchain>
 <Version>0</Version>
@@ -32,7 +32,7 @@
     <usedDebug>true</usedDebug>
     	<debugprobe></debugprobe>
     <optimization>6</optimization>
-    <icfloc>1</icfloc>
+    <icfloc>0</icfloc>
     <Adefines>
         <define></define>
     </Adefines>   
