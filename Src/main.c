@@ -125,8 +125,8 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-   u32Tim1DutyCycle = 30u;  //u32 wymagane przez funkcje DMA
-   u32Tim2DutyCycle = 30u;  //u32 wymagane przez funkcje DMA
+   u32Tim1DutyCycle = 70u;  //u32 wymagane przez funkcje DMA
+   u32Tim2DutyCycle = 70u;  //u32 wymagane przez funkcje DMA
 
    //Inicjalizacja zmiennych od odbieranych komend
    sRxCmd.u8Idx = 0u;
@@ -171,6 +171,9 @@ int main(void)
   /* Wlacz odczyt parametrow PWM */
   HAL_TIM_IC_Start(&htim4, TIM_CHANNEL_1);
   HAL_TIM_IC_Start(&htim4, TIM_CHANNEL_2);
+  /* Wlacz przerwanie dla TIM3 i TIM4 */
+  HAL_TIM_Base_Start_IT(&htim3);
+//  HAL_TIM_Base_Start_IT(&htim4);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -382,11 +385,12 @@ static void MX_TIM3_Init(void)
   TIM_SlaveConfigTypeDef sSlaveConfig;
   TIM_IC_InitTypeDef sConfigIC;
   TIM_MasterConfigTypeDef sMasterConfig;
+  TIM_OC_InitTypeDef sConfigOC;
 
   htim3.Instance = TIM3;
   htim3.Init.Prescaler = 42000-1;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 65535;
+  htim3.Init.Period = 2000-1;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
   {
@@ -395,6 +399,11 @@ static void MX_TIM3_Init(void)
 
   sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
   if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  if (HAL_TIM_OC_Init(&htim3) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
@@ -437,6 +446,15 @@ static void MX_TIM3_Init(void)
     _Error_Handler(__FILE__, __LINE__);
   }
 
+  sConfigOC.OCMode = TIM_OCMODE_TIMING;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
 }
 
 /* TIM4 init function */
@@ -451,7 +469,7 @@ static void MX_TIM4_Init(void)
   htim4.Instance = TIM4;
   htim4.Init.Prescaler = 42000-1;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 65535;
+  htim4.Init.Period = 2000-1;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
   {
@@ -631,6 +649,41 @@ static PwmChannel_t GetPwmChannel(void)
    return ePwmChannel;
 }
 
+void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
+{
+   if(TIM3 == htim->Instance)
+   {
+      /* Clear register */
+      htim->Instance->CNT = 0u;
+   }
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+   if(TIM3 == htim->Instance)
+   {
+      HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+
+      htim->Instance->SR &= ~TIM_SR_CC1OF;
+//      /* Period */
+//      htim->Instance->CCR1 = 999u;
+//
+//      /* Input pin is low -> duty cycle = 0% */
+//      if(GPIO_PIN_RESET == HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_6))
+//      {
+//         htim->Instance->CCR2 = (uint32_t)(-1);
+//      }
+//      /* Input pin is high -> duty cycle = 100% */
+//      else
+//      {
+//         htim->Instance->CCR2 = 999u;
+//      }
+
+      htim->Instance->CCR1 = 0u;
+      htim->Instance->CCR2 = 0u;
+   }
+}
+
 /*! \brief Funkcja wywolywana po odebraniu zaku z UART */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
@@ -680,15 +733,13 @@ static void PrintInputPwmParameters(void)
    HAL_UART_Transmit(&huart2, u8TxtBuffer, strlen((const char*)u8TxtBuffer), 1000u);
    HAL_UART_Transmit(&huart2, (uint8_t*)"\n", 1u, 1000u);
 
-   /* Wznow odbior sygnalow przez uart */
    HAL_UART_Receive_IT(&huart2, &u8RxChar, 1u);
-//   HAL_UART_Transmit(&huart2, "  Period [ms]: ", 15u, 1000u);
-   //HAL_TIM_ReadCapturedValue()
 }
 
 static void UpdateDutyCycle(void)
 {
-   uint8_t u8DutyCycle;
+   uint8_t u8DutyCycle;   HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_10);
+
    PwmChannel_t ePwmChannel;
 
    ePwmChannel = GetPwmChannel();
