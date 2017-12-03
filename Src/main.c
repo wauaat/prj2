@@ -59,16 +59,9 @@ DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
+
 /*! \brief Liczba znakow w buforze odbiorczym uwzględniająca znak końca tekstu '\0' */
 #define BUFFER_SIZE (9u)
-
-/*! \brief Bufor przechowujący odebrane i przetworzone znaki */
-uint8_t u8RxChar;
-
-/*! \brief TIM1 (PWM1) duty cycle */
-uint32_t u32Tim1DutyCycle = 0u;
-/*! \brief TIM1 (PWM1) duty cycle */
-uint32_t u32Tim2DutyCycle = 0u;
 
 /*! \brief Typ wyliczeniowy opisujący stan odebranej komendy przez UART */
 typedef enum
@@ -84,13 +77,33 @@ typedef enum
    PwmChannel_eCh2,
 }PwmChannel_t;
 
-/*! \brief Struktura zawierajaca otrzymana komende i stan tej komendy */
+typedef enum
+{
+   eDutyCycleValid,
+   eDutyCycleInvalid_0,
+   eDutyCycleInvalid_100
+}DutyCycleState_t;
+
+/* Struktura zawierajaca otrzymana komende i stan tej komendy */
 struct
 {
    uint8_t u8Buf[BUFFER_SIZE]; /*!< Bufor przechowujący odebrane i przetworzone znaki */
    uint8_t u8Idx; /*!< Indeks kolejnego elementu w buforze */
    ReceivedCmdState_t ReceivedCmdState; /*!< Stan odebranego polecenia */
 }sRxCmd; /*!< Stworzenie struktury o nazwie sRxCmd */
+
+/* Bufor przechowujący odebrane i przetworzone znaki */
+uint8_t u8RxChar;
+
+/* Duty cycle state */
+volatile DutyCycleState_t DutyCycleStatePwmIn1;
+DutyCycleState_t DutyCycleStatePwmIn2;
+
+/* TIM1 (PWM1) duty cycle */
+uint32_t u32Tim1DutyCycle = 0u;
+/* TIM1 (PWM1) duty cycle */
+uint32_t u32Tim2DutyCycle = 0u;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -104,16 +117,17 @@ static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);                                    
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
                                 
-                                
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
 static uint8_t GetDutyCycle(void);
-/*! \brief Reads duty cycle from input UART buffer and returns decimal value */
+/* Reads duty cycle from input UART buffer and returns decimal value */
 static PwmChannel_t GetPwmChannel(void);
-/*! \brief Przesyla przez uart parametry wejsciowych PWM */
+/* Przesyla przez uart parametry wejsciowych PWM */
 static void PrintInputPwmParameters(void);
-/*! \brief Function updates duty cycle */
+/* Wysyla Period i duty cycle przez uart */
+static void SendPerdiodAndDutyCycle(uint8_t u8Period, uint8_t u8DutyCycle);
+/* Function updates duty cycle */
 static void UpdateDutyCycle(void);
 /* USER CODE END PFP */
 
@@ -123,10 +137,12 @@ static void UpdateDutyCycle(void);
 
 int main(void)
 {
-
   /* USER CODE BEGIN 1 */
-   u32Tim1DutyCycle = 70u;  //u32 wymagane przez funkcje DMA
-   u32Tim2DutyCycle = 70u;  //u32 wymagane przez funkcje DMA
+   u32Tim1DutyCycle = 0u;  //u32 wymagane przez funkcje DMA
+   u32Tim2DutyCycle = 0u;  //u32 wymagane przez funkcje DMA
+
+   DutyCycleStatePwmIn1 = eDutyCycleInvalid_0;
+   DutyCycleStatePwmIn2 = eDutyCycleInvalid_0;
 
    //Inicjalizacja zmiennych od odbieranych komend
    sRxCmd.u8Idx = 0u;
@@ -166,14 +182,17 @@ int main(void)
   /* Wlacz PWM wykorzystujacy DMA */
   HAL_TIM_PWM_Start_DMA(&htim2, TIM_CHANNEL_3, &u32Tim2DutyCycle, 1u);
   /* Wlacz odczyt parametrow PWM */
-  HAL_TIM_IC_Start(&htim3, TIM_CHANNEL_1);
-  HAL_TIM_IC_Start(&htim3, TIM_CHANNEL_2);
+  //HAL_TIM_IC_Start(&htim3, TIM_CHANNEL_1);
+  //HAL_TIM_IC_Start(&htim3, TIM_CHANNEL_2);
+  HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_1);
+  HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_2);
   /* Wlacz odczyt parametrow PWM */
   HAL_TIM_IC_Start(&htim4, TIM_CHANNEL_1);
   HAL_TIM_IC_Start(&htim4, TIM_CHANNEL_2);
   /* Wlacz przerwanie dla TIM3 i TIM4 */
   HAL_TIM_Base_Start_IT(&htim3);
-//  HAL_TIM_Base_Start_IT(&htim4);
+  HAL_TIM_Base_Start_IT(&htim4);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -653,8 +672,11 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 {
    if(TIM3 == htim->Instance)
    {
-      /* Clear register */
-      htim->Instance->CNT = 0u;
+      DutyCycleStatePwmIn1 = eDutyCycleValid;
+   }
+   if(TIM4 == htim->Instance)
+   {
+      DutyCycleStatePwmIn2 = eDutyCycleValid;
    }
 }
 
@@ -662,26 +684,26 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
    if(TIM3 == htim->Instance)
    {
-      HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-
-      htim->Instance->SR &= ~TIM_SR_CC1OF;
-//      /* Period */
-//      htim->Instance->CCR1 = 999u;
-//
-//      /* Input pin is low -> duty cycle = 0% */
-//      if(GPIO_PIN_RESET == HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_6))
+      if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_6) == GPIO_PIN_SET)
+      {
+         DutyCycleStatePwmIn1 = eDutyCycleInvalid_100;
+      }
+      else
+      {
+         DutyCycleStatePwmIn1 = eDutyCycleInvalid_0;
+      }
+   }
+//   if(TIM4 == htim->Instance)
+//   {
+//      if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_6) == GPIO_PIN_SET)
 //      {
-//         htim->Instance->CCR2 = (uint32_t)(-1);
+//         DutyCycleStatePwmIn2 = eDutyCycleInvalid_100;
 //      }
-//      /* Input pin is high -> duty cycle = 100% */
 //      else
 //      {
-//         htim->Instance->CCR2 = 999u;
+//         DutyCycleStatePwmIn2 = eDutyCycleInvalid_0;
 //      }
-
-      htim->Instance->CCR1 = 0u;
-      htim->Instance->CCR2 = 0u;
-   }
+//   }
 }
 
 /*! \brief Funkcja wywolywana po odebraniu zaku z UART */
@@ -714,26 +736,66 @@ static void PrintInputPwmParameters(void)
 {
    uint8_t u8DutyCycle;
    uint8_t u8Period;
-   uint8_t u8TxtBuffer[6u];
-   //PB10 PB6
-   /* Zablokuj odbior sygnalow przez uart */
-   HAL_UART_AbortReceive_IT(&huart2);
 
-   HAL_UART_Transmit(&huart2, (uint8_t*)"PWM on PB10:\n", 13u, 1000u);
+   /* Zablokuj odbior sygnalow przez uart */
+      HAL_UART_AbortReceive_IT(&huart2);
+
+   /* PWM input on PA6 */
+   switch(DutyCycleStatePwmIn1)
+   {
+      case eDutyCycleValid:
+         u8Period = HAL_TIM_ReadCapturedValue(&htim3, TIM_CHANNEL_1) + 1u;
+         u8DutyCycle = HAL_TIM_ReadCapturedValue(&htim3, TIM_CHANNEL_2) + 1u;
+         break;
+      case eDutyCycleInvalid_0:
+         u8Period = 0;
+         u8DutyCycle = 0;
+         break;
+      case eDutyCycleInvalid_100:
+         u8Period = 0;
+         u8DutyCycle = 100;
+   }
+   /* Period */
+   HAL_UART_Transmit(&huart2, (uint8_t*)"PWM on PA6:\n", 13u, 1000u);
+   SendPerdiodAndDutyCycle(u8Period, u8DutyCycle);
+
+   /* PWM input on PB6 */
+   switch(DutyCycleStatePwmIn2)
+   {
+      case eDutyCycleValid:
+         u8Period = HAL_TIM_ReadCapturedValue(&htim4, TIM_CHANNEL_1) + 1u;
+         u8DutyCycle = HAL_TIM_ReadCapturedValue(&htim4, TIM_CHANNEL_2) + 1u;
+         break;
+      case eDutyCycleInvalid_0:
+         u8Period = 0;
+         u8DutyCycle = 0;
+         break;
+      case eDutyCycleInvalid_100:
+         u8Period = 0;
+         u8DutyCycle = 100;
+   }
+   /* Period */
+   HAL_UART_Transmit(&huart2, (uint8_t*)"PWM on PB6:\n", 13u, 1000u);
+   SendPerdiodAndDutyCycle(u8Period, u8DutyCycle);
+
+   /* Wlacz przerwania */
+   HAL_UART_Receive_IT(&huart2, &u8RxChar, 1u);
+}
+
+static void SendPerdiodAndDutyCycle(uint8_t u8Period, uint8_t u8DutyCycle)
+{
+   uint8_t u8TxtBuffer[6u];
 
    HAL_UART_Transmit(&huart2, (uint8_t*)"  Period [ms]: ", 15u, 1000u);
-   u8Period = HAL_TIM_ReadCapturedValue(&htim3, TIM_CHANNEL_1) + 1u;
    itoa(u8Period, (char *)u8TxtBuffer, 10);
    HAL_UART_Transmit(&huart2, u8TxtBuffer, strlen((const char*)u8TxtBuffer), 1000u);
    HAL_UART_Transmit(&huart2, (uint8_t*)"\n", 1u, 1000u);
 
+   /* Duty cycle */
    HAL_UART_Transmit(&huart2, (uint8_t*)"  Duty Cycle [ms]: ", 19u, 1000u);
-   u8DutyCycle = HAL_TIM_ReadCapturedValue(&htim3, TIM_CHANNEL_2) + 1u;
    itoa(u8DutyCycle, (char *)u8TxtBuffer, 10);
    HAL_UART_Transmit(&huart2, u8TxtBuffer, strlen((const char*)u8TxtBuffer), 1000u);
    HAL_UART_Transmit(&huart2, (uint8_t*)"\n", 1u, 1000u);
-
-   HAL_UART_Receive_IT(&huart2, &u8RxChar, 1u);
 }
 
 static void UpdateDutyCycle(void)
