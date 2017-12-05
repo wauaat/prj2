@@ -11,18 +11,18 @@ static void MX_GPIO_Init(void)
 #t__HAL_RCC_GPIOA_CLK_ENABLE();
 #t__HAL_RCC_GPIOB_CLK_ENABLE();
 #n#t/*Configure GPIO pin Output Level */
-#tHAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
-#n#t/*Configure GPIO pin : B1_Pin */
-#tGPIO_InitStruct.Pin = B1_Pin;
-#tGPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+#tHAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+#n#t/*Configure GPIO pin : PC13 */
+#tGPIO_InitStruct.Pin = GPIO_PIN_13;
+#tGPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
 #tGPIO_InitStruct.Pull = GPIO_NOPULL;
-#tHAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
-#n#t/*Configure GPIO pin : LD2_Pin */
-#tGPIO_InitStruct.Pin = LD2_Pin;
+#tHAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+#n#t/*Configure GPIO pin : PA5 */
+#tGPIO_InitStruct.Pin = GPIO_PIN_5;
 #tGPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
 #tGPIO_InitStruct.Pull = GPIO_NOPULL;
 #tGPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-#tHAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
+#tHAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 #n
 }
 #n

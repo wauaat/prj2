@@ -53,9 +53,9 @@ TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 DMA_HandleTypeDef hdma_tim1_ch1;
+DMA_HandleTypeDef hdma_tim2_up_ch3;
 
 UART_HandleTypeDef huart2;
-DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
@@ -101,7 +101,7 @@ DutyCycleState_t DutyCycleStatePwmIn2;
 
 /* TIM1 (PWM1) duty cycle */
 uint32_t u32Tim1DutyCycle = 0u;
-/* TIM1 (PWM1) duty cycle */
+/* TIM1 (PWM2) duty cycle */
 uint32_t u32Tim2DutyCycle = 0u;
 
 /* USER CODE END PV */
@@ -112,10 +112,11 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM1_Init(void);
-static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
-static void MX_TIM4_Init(void);                                    
+static void MX_TIM4_Init(void);
+static void MX_TIM2_Init(void);                                    
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
+                                
                                 
 
 /* USER CODE BEGIN PFP */
@@ -137,12 +138,13 @@ static void UpdateDutyCycle(void);
 
 int main(void)
 {
+
   /* USER CODE BEGIN 1 */
    u32Tim1DutyCycle = 0u;  //u32 wymagane przez funkcje DMA
    u32Tim2DutyCycle = 0u;  //u32 wymagane przez funkcje DMA
 
-   DutyCycleStatePwmIn1 = eDutyCycleInvalid_0;
-   DutyCycleStatePwmIn2 = eDutyCycleInvalid_0;
+   DutyCycleStatePwmIn1 = eDutyCycleValid;
+   DutyCycleStatePwmIn2 = eDutyCycleValid;
 
    //Inicjalizacja zmiennych od odbieranych komend
    sRxCmd.u8Idx = 0u;
@@ -170,28 +172,27 @@ int main(void)
   MX_DMA_Init();
   MX_USART2_UART_Init();
   MX_TIM1_Init();
-  MX_TIM2_Init();
   MX_TIM3_Init();
   MX_TIM4_Init();
+  MX_TIM2_Init();
 
   /* USER CODE BEGIN 2 */
   /* Wlacz przerwanie od odebranego znaku z UART */
   HAL_UART_Receive_IT(&huart2, &u8RxChar, 1);
   /* Wlacz PWM wykorzystujacy DMA */
   HAL_TIM_PWM_Start_DMA(&htim1, TIM_CHANNEL_1, &u32Tim1DutyCycle, 1u);
-  /* Wlacz PWM wykorzystujacy DMA */
   HAL_TIM_PWM_Start_DMA(&htim2, TIM_CHANNEL_3, &u32Tim2DutyCycle, 1u);
   /* Wlacz odczyt parametrow PWM */
-  //HAL_TIM_IC_Start(&htim3, TIM_CHANNEL_1);
-  //HAL_TIM_IC_Start(&htim3, TIM_CHANNEL_2);
-  HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_1);
-  HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_2);
+//  HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_1);
+//  HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_2);
+  HAL_TIM_IC_Start(&htim3, TIM_CHANNEL_1);
+  HAL_TIM_IC_Start(&htim3, TIM_CHANNEL_2);
   /* Wlacz odczyt parametrow PWM */
   HAL_TIM_IC_Start(&htim4, TIM_CHANNEL_1);
   HAL_TIM_IC_Start(&htim4, TIM_CHANNEL_2);
   /* Wlacz przerwanie dla TIM3 i TIM4 */
-  HAL_TIM_Base_Start_IT(&htim3);
-  HAL_TIM_Base_Start_IT(&htim4);
+//  HAL_TIM_Base_Start_IT(&htim3);
+//  HAL_TIM_Base_Start_IT(&htim4);
 
   /* USER CODE END 2 */
 
@@ -262,7 +263,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV2;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
   {
@@ -291,7 +292,7 @@ static void MX_TIM1_Init(void)
   TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig;
 
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 4200-1;
+  htim1.Init.Prescaler = 42000-1;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim1.Init.Period = 100-1;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -356,7 +357,7 @@ static void MX_TIM2_Init(void)
   TIM_OC_InitTypeDef sConfigOC;
 
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 4200-1;
+  htim2.Init.Prescaler = 42000-1;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim2.Init.Period = 100-1;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -484,6 +485,7 @@ static void MX_TIM4_Init(void)
   TIM_SlaveConfigTypeDef sSlaveConfig;
   TIM_IC_InitTypeDef sConfigIC;
   TIM_MasterConfigTypeDef sMasterConfig;
+  TIM_OC_InitTypeDef sConfigOC;
 
   htim4.Instance = TIM4;
   htim4.Init.Prescaler = 42000-1;
@@ -497,6 +499,11 @@ static void MX_TIM4_Init(void)
 
   sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
   if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  if (HAL_TIM_OC_Init(&htim4) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
@@ -539,6 +546,15 @@ static void MX_TIM4_Init(void)
     _Error_Handler(__FILE__, __LINE__);
   }
 
+  sConfigOC.OCMode = TIM_OCMODE_TIMING;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_OC_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
 }
 
 /* USART2 init function */
@@ -566,15 +582,15 @@ static void MX_USART2_UART_Init(void)
 static void MX_DMA_Init(void) 
 {
   /* DMA controller clock enable */
-  __HAL_RCC_DMA1_CLK_ENABLE();
   __HAL_RCC_DMA2_CLK_ENABLE();
+  __HAL_RCC_DMA1_CLK_ENABLE();
 
   /* DMA interrupt init */
-  /* DMA1_Stream6_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Stream6_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Stream6_IRQn);
+  /* DMA1_Stream1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream1_IRQn);
   /* DMA2_Stream1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 0, 1);
   HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
 
 }
@@ -598,20 +614,20 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : B1_Pin */
-  GPIO_InitStruct.Pin = B1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  /*Configure GPIO pin : PC13 */
+  GPIO_InitStruct.Pin = GPIO_PIN_13;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : LD2_Pin */
-  GPIO_InitStruct.Pin = LD2_Pin;
+  /*Configure GPIO pin : PA5 */
+  GPIO_InitStruct.Pin = GPIO_PIN_5;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
 }
 
@@ -693,17 +709,17 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
          DutyCycleStatePwmIn1 = eDutyCycleInvalid_0;
       }
    }
-//   if(TIM4 == htim->Instance)
-//   {
-//      if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_6) == GPIO_PIN_SET)
-//      {
-//         DutyCycleStatePwmIn2 = eDutyCycleInvalid_100;
-//      }
-//      else
-//      {
-//         DutyCycleStatePwmIn2 = eDutyCycleInvalid_0;
-//      }
-//   }
+   if(TIM4 == htim->Instance)
+   {
+      if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_6) == GPIO_PIN_SET)
+      {
+         DutyCycleStatePwmIn2 = eDutyCycleInvalid_100;
+      }
+      else
+      {
+         DutyCycleStatePwmIn2 = eDutyCycleInvalid_0;
+      }
+   }
 }
 
 /*! \brief Funkcja wywolywana po odebraniu zaku z UART */
@@ -738,25 +754,25 @@ static void PrintInputPwmParameters(void)
    uint8_t u8Period;
 
    /* Zablokuj odbior sygnalow przez uart */
-      HAL_UART_AbortReceive_IT(&huart2);
+   HAL_UART_AbortReceive_IT(&huart2);
 
    /* PWM input on PA6 */
-   switch(DutyCycleStatePwmIn1)
-   {
-      case eDutyCycleValid:
+//   switch(DutyCycleStatePwmIn1)
+//   {
+//      case eDutyCycleValid:
          u8Period = HAL_TIM_ReadCapturedValue(&htim3, TIM_CHANNEL_1) + 1u;
          u8DutyCycle = HAL_TIM_ReadCapturedValue(&htim3, TIM_CHANNEL_2) + 1u;
-         break;
-      case eDutyCycleInvalid_0:
-         u8Period = 0;
-         u8DutyCycle = 0;
-         break;
-      case eDutyCycleInvalid_100:
-         u8Period = 0;
-         u8DutyCycle = 100;
-   }
+//         break;
+//      case eDutyCycleInvalid_0:
+//         u8Period = 0;
+//         u8DutyCycle = 0;
+//         break;
+//      case eDutyCycleInvalid_100:
+//         u8Period = 0;
+//         u8DutyCycle = 100;
+//   }
    /* Period */
-   HAL_UART_Transmit(&huart2, (uint8_t*)"PWM on PA6:\n", 13u, 1000u);
+   HAL_UART_Transmit(&huart2, (uint8_t*)"PWM on PA6: ", 13u, 1000u);
    SendPerdiodAndDutyCycle(u8Period, u8DutyCycle);
 
    /* PWM input on PB6 */
@@ -775,7 +791,7 @@ static void PrintInputPwmParameters(void)
          u8DutyCycle = 100;
    }
    /* Period */
-   HAL_UART_Transmit(&huart2, (uint8_t*)"PWM on PB6:\n", 13u, 1000u);
+   HAL_UART_Transmit(&huart2, (uint8_t*)"PWM on PB6: ", 13u, 1000u);
    SendPerdiodAndDutyCycle(u8Period, u8DutyCycle);
 
    /* Wlacz przerwania */
@@ -789,7 +805,7 @@ static void SendPerdiodAndDutyCycle(uint8_t u8Period, uint8_t u8DutyCycle)
    HAL_UART_Transmit(&huart2, (uint8_t*)"  Period [ms]: ", 15u, 1000u);
    itoa(u8Period, (char *)u8TxtBuffer, 10);
    HAL_UART_Transmit(&huart2, u8TxtBuffer, strlen((const char*)u8TxtBuffer), 1000u);
-   HAL_UART_Transmit(&huart2, (uint8_t*)"\n", 1u, 1000u);
+   HAL_UART_Transmit(&huart2, (uint8_t*)"\t", 1u, 1000u);
 
    /* Duty cycle */
    HAL_UART_Transmit(&huart2, (uint8_t*)"  Duty Cycle [ms]: ", 19u, 1000u);
@@ -800,7 +816,7 @@ static void SendPerdiodAndDutyCycle(uint8_t u8Period, uint8_t u8DutyCycle)
 
 static void UpdateDutyCycle(void)
 {
-   uint8_t u8DutyCycle;   HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_10);
+   uint8_t u8DutyCycle;
 
    PwmChannel_t ePwmChannel;
 
