@@ -127,7 +127,7 @@ static PwmChannel_t GetPwmChannel(void);
 /* Przesyla przez uart parametry wejsciowych PWM */
 static void PrintInputPwmParameters(void);
 /* Wysyla Period i duty cycle przez uart */
-static void SendPerdiodAndDutyCycle(uint8_t u8Period, uint8_t u8DutyCycle);
+static void SendPerdiodAndDutyCycle(uint16_t u16Period, uint8_t u8DutyCycle);
 /* Function updates duty cycle */
 static void UpdateDutyCycle(void);
 /* USER CODE END PFP */
@@ -183,16 +183,14 @@ int main(void)
   HAL_TIM_PWM_Start_DMA(&htim1, TIM_CHANNEL_1, &u32Tim1DutyCycle, 1u);
   HAL_TIM_PWM_Start_DMA(&htim2, TIM_CHANNEL_3, &u32Tim2DutyCycle, 1u);
   /* Wlacz odczyt parametrow PWM */
-//  HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_1);
-//  HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_2);
   HAL_TIM_IC_Start(&htim3, TIM_CHANNEL_1);
   HAL_TIM_IC_Start(&htim3, TIM_CHANNEL_2);
   /* Wlacz odczyt parametrow PWM */
   HAL_TIM_IC_Start(&htim4, TIM_CHANNEL_1);
   HAL_TIM_IC_Start(&htim4, TIM_CHANNEL_2);
-  /* Wlacz przerwanie dla TIM3 i TIM4 */
-//  HAL_TIM_Base_Start_IT(&htim3);
-//  HAL_TIM_Base_Start_IT(&htim4);
+  /* Wlacz przerwanie dla TIM3 i TIM4 - potrzebne do duty cycle 0 i 100% (timeout) */
+  HAL_TIM_Base_Start_IT(&htim3);
+  HAL_TIM_Base_Start_IT(&htim4);
 
   /* USER CODE END 2 */
 
@@ -203,6 +201,8 @@ int main(void)
      //Jezeli odebrano komende
      if(sRxCmd.ReceivedCmdState == eReady)
      {
+        //todo dodaj kopie bufora rx
+
         //Sprawdz format koemndy "PWMx_xxx"
         if(strcmp((char *)sRxCmd.u8Buf, "PWM") > 1)
         {
@@ -582,15 +582,15 @@ static void MX_USART2_UART_Init(void)
 static void MX_DMA_Init(void) 
 {
   /* DMA controller clock enable */
-  __HAL_RCC_DMA2_CLK_ENABLE();
   __HAL_RCC_DMA1_CLK_ENABLE();
+  __HAL_RCC_DMA2_CLK_ENABLE();
 
   /* DMA interrupt init */
   /* DMA1_Stream1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream1_IRQn);
   /* DMA2_Stream1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 0, 1);
+  HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
 
 }
@@ -684,41 +684,32 @@ static PwmChannel_t GetPwmChannel(void)
    return ePwmChannel;
 }
 
-void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
-{
-   if(TIM3 == htim->Instance)
-   {
-      DutyCycleStatePwmIn1 = eDutyCycleValid;
-   }
-   if(TIM4 == htim->Instance)
-   {
-      DutyCycleStatePwmIn2 = eDutyCycleValid;
-   }
-}
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-   if(TIM3 == htim->Instance)
+   // przerwanie nie podchodzi od input capture tylko od overflow
+   if((htim->Instance == TIM3) && ((htim->Instance->SR & TIM_SR_CC1IF) == 0) && ((htim->Instance->SR & TIM_SR_CC2IF) == 0))
    {
-      if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_6) == GPIO_PIN_SET)
+      //Period
+      htim3.Instance->CCER &= ~(TIM_CCER_CC1E);
+      htim3.Instance->CCMR1 &= ~(TIM_CCMR1_CC1S_0);
+      htim3.Instance->CCR1 = 1999u;
+      htim3.Instance->CCMR1 |= (TIM_CCMR1_CC1S_0);
+      htim3.Instance->CCER |= (TIM_CCER_CC1E);
+
+      //Duty cycle odczytaj ze stanu
+      htim3.Instance->CCER &= ~(TIM_CCER_CC2E);
+      htim3.Instance->CCMR1 &= ~(TIM_CCMR1_CC2S_1);
+      if(GPIO_PIN_SET == HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_6))
       {
-         DutyCycleStatePwmIn1 = eDutyCycleInvalid_100;
+         htim3.Instance->CCR2 = 99;
       }
       else
       {
-         DutyCycleStatePwmIn1 = eDutyCycleInvalid_0;
+         htim3.Instance->CCR2 = -1;
       }
-   }
-   if(TIM4 == htim->Instance)
-   {
-      if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_6) == GPIO_PIN_SET)
-      {
-         DutyCycleStatePwmIn2 = eDutyCycleInvalid_100;
-      }
-      else
-      {
-         DutyCycleStatePwmIn2 = eDutyCycleInvalid_0;
-      }
+      htim3.Instance->CCMR1 |= (TIM_CCMR1_CC2S_1);
+      htim3.Instance->CCER |= (TIM_CCER_CC2E);
    }
 }
 
@@ -751,59 +742,29 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 static void PrintInputPwmParameters(void)
 {
    uint8_t u8DutyCycle;
-   uint8_t u8Period;
-
-   /* Zablokuj odbior sygnalow przez uart */
-   HAL_UART_AbortReceive_IT(&huart2);
+   uint16_t u16Period;
 
    /* PWM input on PA6 */
-//   switch(DutyCycleStatePwmIn1)
-//   {
-//      case eDutyCycleValid:
-         u8Period = HAL_TIM_ReadCapturedValue(&htim3, TIM_CHANNEL_1) + 1u;
-         u8DutyCycle = HAL_TIM_ReadCapturedValue(&htim3, TIM_CHANNEL_2) + 1u;
-//         break;
-//      case eDutyCycleInvalid_0:
-//         u8Period = 0;
-//         u8DutyCycle = 0;
-//         break;
-//      case eDutyCycleInvalid_100:
-//         u8Period = 0;
-//         u8DutyCycle = 100;
-//   }
+   u16Period = HAL_TIM_ReadCapturedValue(&htim3, TIM_CHANNEL_1) + 1u;
+   u8DutyCycle = HAL_TIM_ReadCapturedValue(&htim3, TIM_CHANNEL_2) + 1u;
    /* Period */
    HAL_UART_Transmit(&huart2, (uint8_t*)"PWM on PA6: ", 13u, 1000u);
-   SendPerdiodAndDutyCycle(u8Period, u8DutyCycle);
+   SendPerdiodAndDutyCycle(u16Period, u8DutyCycle);
 
    /* PWM input on PB6 */
-   switch(DutyCycleStatePwmIn2)
-   {
-      case eDutyCycleValid:
-         u8Period = HAL_TIM_ReadCapturedValue(&htim4, TIM_CHANNEL_1) + 1u;
-         u8DutyCycle = HAL_TIM_ReadCapturedValue(&htim4, TIM_CHANNEL_2) + 1u;
-         break;
-      case eDutyCycleInvalid_0:
-         u8Period = 0;
-         u8DutyCycle = 0;
-         break;
-      case eDutyCycleInvalid_100:
-         u8Period = 0;
-         u8DutyCycle = 100;
-   }
+   u16Period = HAL_TIM_ReadCapturedValue(&htim4, TIM_CHANNEL_1) + 1u;
+   u8DutyCycle = HAL_TIM_ReadCapturedValue(&htim4, TIM_CHANNEL_2) + 1u;
    /* Period */
    HAL_UART_Transmit(&huart2, (uint8_t*)"PWM on PB6: ", 13u, 1000u);
-   SendPerdiodAndDutyCycle(u8Period, u8DutyCycle);
-
-   /* Wlacz przerwania */
-   HAL_UART_Receive_IT(&huart2, &u8RxChar, 1u);
+   SendPerdiodAndDutyCycle(u16Period, u8DutyCycle);
 }
 
-static void SendPerdiodAndDutyCycle(uint8_t u8Period, uint8_t u8DutyCycle)
+static void SendPerdiodAndDutyCycle(uint16_t u16Period, uint8_t u8DutyCycle)
 {
-   uint8_t u8TxtBuffer[6u];
+   uint8_t u8TxtBuffer[7u];
 
    HAL_UART_Transmit(&huart2, (uint8_t*)"  Period [ms]: ", 15u, 1000u);
-   itoa(u8Period, (char *)u8TxtBuffer, 10);
+   itoa(u16Period, (char *)u8TxtBuffer, 10);
    HAL_UART_Transmit(&huart2, u8TxtBuffer, strlen((const char*)u8TxtBuffer), 1000u);
    HAL_UART_Transmit(&huart2, (uint8_t*)"\t", 1u, 1000u);
 
