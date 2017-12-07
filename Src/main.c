@@ -138,7 +138,6 @@ static void UpdateDutyCycle(void);
 
 int main(void)
 {
-
   /* USER CODE BEGIN 1 */
    u32Tim1DutyCycle = 0u;  //u32 wymagane przez funkcje DMA
    u32Tim2DutyCycle = 0u;  //u32 wymagane przez funkcje DMA
@@ -201,8 +200,6 @@ int main(void)
      //Jezeli odebrano komende
      if(sRxCmd.ReceivedCmdState == eReady)
      {
-        //todo dodaj kopie bufora rx
-
         //Sprawdz format koemndy "PWMx_xxx"
         if(strcmp((char *)sRxCmd.u8Buf, "PWM") > 1)
         {
@@ -684,7 +681,6 @@ static PwmChannel_t GetPwmChannel(void)
    return ePwmChannel;
 }
 
-
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
    // przerwanie nie podchodzi od input capture tylko od overflow
@@ -711,6 +707,29 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
       htim3.Instance->CCMR1 |= (TIM_CCMR1_CC2S_1);
       htim3.Instance->CCER |= (TIM_CCER_CC2E);
    }
+   if((htim->Instance == TIM4) && ((htim->Instance->SR & TIM_SR_CC1IF) == 0) && ((htim->Instance->SR & TIM_SR_CC2IF) == 0))
+   {
+      //Period
+      htim4.Instance->CCER &= ~(TIM_CCER_CC1E);
+      htim4.Instance->CCMR1 &= ~(TIM_CCMR1_CC1S_0);
+      htim4.Instance->CCR1 = 1999u;
+      htim4.Instance->CCMR1 |= (TIM_CCMR1_CC1S_0);
+      htim4.Instance->CCER |= (TIM_CCER_CC1E);
+
+      //Duty cycle odczytaj ze stanu
+      htim4.Instance->CCER &= ~(TIM_CCER_CC2E);
+      htim4.Instance->CCMR1 &= ~(TIM_CCMR1_CC2S_1);
+      if(GPIO_PIN_SET == HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_6))
+      {
+         htim4.Instance->CCR2 = 99;
+      }
+      else
+      {
+         htim4.Instance->CCR2 = -1;
+      }
+      htim4.Instance->CCMR1 |= (TIM_CCMR1_CC2S_1);
+      htim4.Instance->CCER |= (TIM_CCER_CC2E);
+   }
 }
 
 /*! \brief Funkcja wywolywana po odebraniu zaku z UART */
@@ -735,7 +754,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
       }
    }
 
-   //Wlacz nasluchiwanie na uart
+   //Wlacz przerwanie od nastepnego nadchodzacego znaku
    HAL_UART_Receive_IT(huart, &u8RxChar, 1u);
 }
 
@@ -748,14 +767,14 @@ static void PrintInputPwmParameters(void)
    u16Period = HAL_TIM_ReadCapturedValue(&htim3, TIM_CHANNEL_1) + 1u;
    u8DutyCycle = HAL_TIM_ReadCapturedValue(&htim3, TIM_CHANNEL_2) + 1u;
    /* Period */
-   HAL_UART_Transmit(&huart2, (uint8_t*)"PWM on PA6: ", 13u, 1000u);
+   HAL_UART_Transmit(&huart2, (uint8_t*)"\nPWM IN on PA6: ", 17u, 1000u);
    SendPerdiodAndDutyCycle(u16Period, u8DutyCycle);
 
    /* PWM input on PB6 */
    u16Period = HAL_TIM_ReadCapturedValue(&htim4, TIM_CHANNEL_1) + 1u;
    u8DutyCycle = HAL_TIM_ReadCapturedValue(&htim4, TIM_CHANNEL_2) + 1u;
    /* Period */
-   HAL_UART_Transmit(&huart2, (uint8_t*)"PWM on PB6: ", 13u, 1000u);
+   HAL_UART_Transmit(&huart2, (uint8_t*)"PWM IN on PB6: ", 16u, 1000u);
    SendPerdiodAndDutyCycle(u16Period, u8DutyCycle);
 }
 
