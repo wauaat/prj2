@@ -117,8 +117,6 @@ static void MX_TIM4_Init(void);
 static void MX_TIM2_Init(void);                                    
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
                                 
-                                
-
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
 static uint8_t GetDutyCycle(void);
@@ -126,6 +124,8 @@ static uint8_t GetDutyCycle(void);
 static PwmChannel_t GetPwmChannel(void);
 /* Przesyla przez uart parametry wejsciowych PWM */
 static void PrintInputPwmParameters(void);
+/* Przesyla przez uart parametry wejsciowych PWM */
+static void PrintOutputPwmParameters(void);
 /* Wysyla Period i duty cycle przez uart */
 static void SendPerdiodAndDutyCycle(uint16_t u16Period, uint8_t u8DutyCycle);
 /* Function updates duty cycle */
@@ -138,6 +138,7 @@ static void UpdateDutyCycle(void);
 
 int main(void)
 {
+
   /* USER CODE BEGIN 1 */
    u32Tim1DutyCycle = 0u;  //u32 wymagane przez funkcje DMA
    u32Tim2DutyCycle = 0u;  //u32 wymagane przez funkcje DMA
@@ -208,6 +209,7 @@ int main(void)
         else if(strcmp((char*)sRxCmd.u8Buf, "GET") == 0)
         {
            PrintInputPwmParameters();
+           PrintOutputPwmParameters();
         }
 
         sRxCmd.ReceivedCmdState = eNotReady;
@@ -559,7 +561,7 @@ static void MX_USART2_UART_Init(void)
 {
 
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 9600;
+  huart2.Init.BaudRate = 38400;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;
@@ -579,8 +581,8 @@ static void MX_USART2_UART_Init(void)
 static void MX_DMA_Init(void) 
 {
   /* DMA controller clock enable */
-  __HAL_RCC_DMA1_CLK_ENABLE();
   __HAL_RCC_DMA2_CLK_ENABLE();
+  __HAL_RCC_DMA1_CLK_ENABLE();
 
   /* DMA interrupt init */
   /* DMA1_Stream1_IRQn interrupt configuration */
@@ -683,52 +685,59 @@ static PwmChannel_t GetPwmChannel(void)
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-   // przerwanie nie podchodzi od input capture tylko od overflow
-   if((htim->Instance == TIM3) && ((htim->Instance->SR & TIM_SR_CC1IF) == 0) && ((htim->Instance->SR & TIM_SR_CC2IF) == 0))
+   if((htim->Instance == TIM3) || (htim->Instance == TIM4))
    {
-      //Period
-      htim3.Instance->CCER &= ~(TIM_CCER_CC1E);
-      htim3.Instance->CCMR1 &= ~(TIM_CCMR1_CC1S_0);
-      htim3.Instance->CCR1 = 1999u;
-      htim3.Instance->CCMR1 |= (TIM_CCMR1_CC1S_0);
-      htim3.Instance->CCER |= (TIM_CCER_CC1E);
+      if((htim->Instance->SR & TIM_SR_CC1IF) || (htim->Instance->SR & TIM_SR_CC2IF))
+      {
+         htim->Instance->CCR1;
+         htim->Instance->CCR2;
+      }
+      else if(htim->Instance == TIM3)
+      {
+         //Period
+         htim3.Instance->CCER &= ~(TIM_CCER_CC1E);
+         htim3.Instance->CCMR1 &= ~(TIM_CCMR1_CC1S_0);
+         htim3.Instance->CCR1 = 1999u;
+         htim3.Instance->CCMR1 |= (TIM_CCMR1_CC1S_0);
+         htim3.Instance->CCER |= (TIM_CCER_CC1E);
 
-      //Duty cycle odczytaj ze stanu
-      htim3.Instance->CCER &= ~(TIM_CCER_CC2E);
-      htim3.Instance->CCMR1 &= ~(TIM_CCMR1_CC2S_1);
-      if(GPIO_PIN_SET == HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_6))
-      {
-         htim3.Instance->CCR2 = 99;
+         //Duty cycle odczytaj ze stanu
+         htim3.Instance->CCER &= ~(TIM_CCER_CC2E);
+         htim3.Instance->CCMR1 &= ~(TIM_CCMR1_CC2S_1);
+          if(GPIO_PIN_SET == HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_6))
+         {
+            htim3.Instance->CCR2 = 99;
+         }
+         else
+         {
+            htim3.Instance->CCR2 = -1;
+         }
+         htim3.Instance->CCMR1 |= (TIM_CCMR1_CC2S_1);
+         htim3.Instance->CCER |= (TIM_CCER_CC2E);
       }
-      else
+      else if(htim->Instance == TIM4)
       {
-         htim3.Instance->CCR2 = -1;
-      }
-      htim3.Instance->CCMR1 |= (TIM_CCMR1_CC2S_1);
-      htim3.Instance->CCER |= (TIM_CCER_CC2E);
-   }
-   if((htim->Instance == TIM4) && ((htim->Instance->SR & TIM_SR_CC1IF) == 0) && ((htim->Instance->SR & TIM_SR_CC2IF) == 0))
-   {
-      //Period
-      htim4.Instance->CCER &= ~(TIM_CCER_CC1E);
-      htim4.Instance->CCMR1 &= ~(TIM_CCMR1_CC1S_0);
-      htim4.Instance->CCR1 = 1999u;
-      htim4.Instance->CCMR1 |= (TIM_CCMR1_CC1S_0);
-      htim4.Instance->CCER |= (TIM_CCER_CC1E);
+         //Period
+         htim4.Instance->CCER &= ~(TIM_CCER_CC1E);
+         htim4.Instance->CCMR1 &= ~(TIM_CCMR1_CC1S_0);
+         htim4.Instance->CCR1 = 1999u;
+         htim4.Instance->CCMR1 |= (TIM_CCMR1_CC1S_0);
+         htim4.Instance->CCER |= (TIM_CCER_CC1E);
 
-      //Duty cycle odczytaj ze stanu
-      htim4.Instance->CCER &= ~(TIM_CCER_CC2E);
-      htim4.Instance->CCMR1 &= ~(TIM_CCMR1_CC2S_1);
-      if(GPIO_PIN_SET == HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_6))
-      {
-         htim4.Instance->CCR2 = 99;
+         //Duty cycle odczytaj ze stanu
+         htim4.Instance->CCER &= ~(TIM_CCER_CC2E);
+         htim4.Instance->CCMR1 &= ~(TIM_CCMR1_CC2S_1);
+         if(GPIO_PIN_SET == HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_6))
+         {
+            htim4.Instance->CCR2 = 99;
+         }
+         else
+         {
+            htim4.Instance->CCR2 = -1;
+         }
+         htim4.Instance->CCMR1 |= (TIM_CCMR1_CC2S_1);
+         htim4.Instance->CCER |= (TIM_CCER_CC2E);
       }
-      else
-      {
-         htim4.Instance->CCR2 = -1;
-      }
-      htim4.Instance->CCMR1 |= (TIM_CCMR1_CC2S_1);
-      htim4.Instance->CCER |= (TIM_CCER_CC2E);
    }
 }
 
@@ -778,6 +787,27 @@ static void PrintInputPwmParameters(void)
    SendPerdiodAndDutyCycle(u16Period, u8DutyCycle);
 }
 
+static void PrintOutputPwmParameters(void)
+{
+   uint8_t u8TxtBuffer[7u];
+
+   //PA8 Output PWM1
+   HAL_UART_Transmit(&huart2, (uint8_t*)"PWM1 OUT on PA6: ", 17u, 1000u);
+   HAL_UART_Transmit(&huart2, (uint8_t*)"Period [ms]: 100 ", 17u, 1000u);
+   HAL_UART_Transmit(&huart2, (uint8_t*)"Duty Cycle [ms]: ", 17u, 1000u);
+   itoa(u32Tim1DutyCycle, (char *)u8TxtBuffer, 10);
+   HAL_UART_Transmit(&huart2, u8TxtBuffer, strlen((const char*)u8TxtBuffer), 1000u);
+   HAL_UART_Transmit(&huart2, (uint8_t*)"\n", 1u, 1000u);
+
+   //PB10 Output PWM2
+   HAL_UART_Transmit(&huart2, (uint8_t*)"PWM2 OUT on PB10:", 17u, 1000u);
+   HAL_UART_Transmit(&huart2, (uint8_t*)"Period [ms]: 100 ", 17u, 1000u);
+   HAL_UART_Transmit(&huart2, (uint8_t*)"Duty Cycle [ms]: ", 17u, 1000u);
+   itoa(u32Tim2DutyCycle, (char *)u8TxtBuffer, 10);
+   HAL_UART_Transmit(&huart2, u8TxtBuffer, strlen((const char*)u8TxtBuffer), 1000u);
+   HAL_UART_Transmit(&huart2, (uint8_t*)"\n", 1u, 1000u);
+}
+
 static void SendPerdiodAndDutyCycle(uint16_t u16Period, uint8_t u8DutyCycle)
 {
    uint8_t u8TxtBuffer[7u];
@@ -788,7 +818,7 @@ static void SendPerdiodAndDutyCycle(uint16_t u16Period, uint8_t u8DutyCycle)
    HAL_UART_Transmit(&huart2, (uint8_t*)"\t", 1u, 1000u);
 
    /* Duty cycle */
-   HAL_UART_Transmit(&huart2, (uint8_t*)"  Duty Cycle [ms]: ", 19u, 1000u);
+   HAL_UART_Transmit(&huart2, (uint8_t*)" Duty Cycle [ms]: ", 18u, 1000u);
    itoa(u8DutyCycle, (char *)u8TxtBuffer, 10);
    HAL_UART_Transmit(&huart2, u8TxtBuffer, strlen((const char*)u8TxtBuffer), 1000u);
    HAL_UART_Transmit(&huart2, (uint8_t*)"\n", 1u, 1000u);
